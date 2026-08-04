@@ -80,6 +80,12 @@ No modes, no remapping, no hidden chords.
 
 Pattern: `typethru: <what> - <what to do>`. No stack traces on any user-reachable path.
 
+## v0.2 revisions
+
+- **Live stats (operator-requested).** v0.1 held that accuracy and WPM appear only in the final summary. v0.2 shows `accuracy wpm elapsed` in the footer by default, dim, between the key hints and the tally. The principle ("progress is positional, not judgmental") loses this round to the operator's preference for feedback; the compromise is placement and ink — it sits at the screen edge, in chrome gray, and never animates beyond a once-per-second repaint. `git config typethru.livestats false` restores the v0.1 quiet footer.
+- **Compose hints.** Characters without keys (em/en dash, ellipsis, curly quotes, NBSP) accept compose sequences; the pending partial renders in default ink at the cursor. The column shift when `--` collapses into `—` is accepted (same class as the error-cell shift).
+- **Earned color (syntax highlighting).** Completed add lines render with ANSI-palette syntax highlighting; the active line and ghosts stay monochrome. Color arrives when a line is done — highlighting doubles as the completion state. `git config typethru.highlight false` or `NO_COLOR` disables.
+
 ## Refinement log
 
 - **critique:** first draft had a live WPM counter in the footer; removed - grades mid-session violate principle 2 (quieter). Box-drawing frame around the hunk removed - dashboard chrome anti-reference; whitespace separates.

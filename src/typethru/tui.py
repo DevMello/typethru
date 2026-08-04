@@ -23,6 +23,7 @@ from prompt_toolkit.layout.screen import Point
 from prompt_toolkit.styles import Style
 
 from . import engine
+from .summary import _fmt_elapsed
 
 GUTTER = 6
 
@@ -176,11 +177,16 @@ class Controller:
 
     def footer_fragments(self):
         counts = self.session.counts()
-        tally = f"{counts[engine.TYPED]} typed - {counts[engine.AUTO]} auto - {counts[engine.SKIPPED]} skipped"
-        return [
-            ("class:dim", "[^A] apply as-is   [^S] skip hunk   [^Q] quit      "),
-            ("class:dim", tally),
-        ]
+        parts = ["[^A] apply  [^S] skip  [^Q] quit"]
+        if self.session.settings.live_stats:
+            stats = self.session.stats
+            acc = f"{stats.accuracy:.1f}%" if stats.accuracy is not None else "--%"
+            wpm = f"{stats.wpm:.0f}wpm" if stats.wpm is not None else "0wpm"
+            parts.append(f"{acc} {wpm} {_fmt_elapsed(stats.elapsed)}")
+        parts.append(
+            f"{counts[engine.TYPED]} typed  {counts[engine.AUTO]} auto  {counts[engine.SKIPPED]} skipped"
+        )
+        return [("class:dim", "   ".join(parts))]
 
 
 def build_app(controller: Controller, input=None, output=None):
@@ -278,6 +284,9 @@ def build_app(controller: Controller, input=None, output=None):
         style=_styles(),
         full_screen=True,
         mouse_support=False,
+        # The elapsed clock in the footer needs a periodic repaint; without
+        # live stats the screen only changes on keystrokes.
+        refresh_interval=1.0 if session.settings.live_stats else None,
         input=input,
         output=output,
     )

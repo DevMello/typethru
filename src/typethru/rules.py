@@ -33,13 +33,25 @@ DEFAULT_AUTO_GLOBS = [
 class Settings:
     auto_globs: list[str]
     auto_indent: bool = True
+    live_stats: bool = True
 
     @classmethod
     def load(cls, root) -> "Settings":
         globs = list(DEFAULT_AUTO_GLOBS)
         globs.extend(gitio.config_get_all(root, "typethru.autoapply"))
         indent = gitio.config_get(root, "typethru.indent")
-        return cls(auto_globs=globs, auto_indent=(indent != "type"))
+        return cls(
+            auto_globs=globs,
+            auto_indent=(indent != "type"),
+            live_stats=_config_bool(root, "typethru.livestats", default=True),
+        )
+
+
+def _config_bool(root, key: str, default: bool) -> bool:
+    value = gitio.config_get(root, key)
+    if value is None:
+        return default
+    return value.strip().lower() not in ("false", "off", "0", "no")
 
 
 def path_auto_reason(path: str, globs: list[str]) -> str | None:
