@@ -76,6 +76,7 @@ No modes, no remapping, no hidden chords.
 - `typethru: unfinished session backup found - run "typethru restore" (recover captured state) or "typethru restore --drop" (keep tree as-is)`
 - `typethru: only binary or auto-apply changes pending - nothing to type (use "git add" as usual)`
 - `typethru: terminal too small (need 80x24, have {w}x{h})`
+- `typethru: needs an interactive terminal - run typethru from a real terminal`
 
 Pattern: `typethru: <what> - <what to do>`. No stack traces on any user-reachable path.
 

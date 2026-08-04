@@ -239,6 +239,18 @@ class TestErrorsD7:
         assert rc == 2
         assert "cannot resolve revision" in capsys.readouterr().err
 
+    def test_non_tty_stdin_refused_before_mutation(self, repo, monkeypatch, capsys):
+        (repo / "a.py").write_bytes(b"x = 1\n")
+        commit_all(repo)
+        (repo / "a.py").write_bytes(b"x = 2\n")
+        monkeypatch.chdir(repo)
+        monkeypatch.delenv("TYPETHRU_SKIP_TERMINAL_CHECK", raising=False)
+        rc = cli.main([])  # pytest's stdin is not a TTY
+        assert rc == 2
+        assert "needs an interactive terminal" in capsys.readouterr().err
+        assert (repo / "a.py").read_bytes() == b"x = 2\n"  # nothing touched
+        assert not backup.exists(repo)
+
     def test_binary_only_change(self, repo, monkeypatch, capsys):
         (repo / "img.bin").write_bytes(b"\x00\x01old")
         commit_all(repo)

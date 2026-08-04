@@ -283,5 +283,13 @@ def build_app(controller: Controller, input=None, output=None):
 def run(controller: Controller, input=None, output=None) -> str:
     """Run the TUI; returns "done", "quit", or "abort"."""
     app = build_app(controller, input=input, output=output)
-    result = app.run()
+    try:
+        result = app.run()
+    except (EOFError, KeyboardInterrupt):
+        # Input died mid-session (terminal closed, pipe exhausted). Treat as
+        # quit: the session summary still prints and the backup is retained.
+        if controller.state == "plan":
+            return "abort"
+        controller.session.quit()
+        return "quit"
     return result or "quit"

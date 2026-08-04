@@ -265,8 +265,10 @@ def cmd_practice(root: Path, spec: str, input=None, output=None) -> int:
 
 
 def _check_terminal() -> None:
-    if os.environ.get("TYPETHRU_SKIP_SIZE_CHECK"):
+    if os.environ.get("TYPETHRU_SKIP_TERMINAL_CHECK"):
         return
+    if not sys.stdin.isatty():
+        raise UsageError("needs an interactive terminal - run typethru from a real terminal")
     size = shutil.get_terminal_size()
     if size.columns < MIN_COLS or size.lines < MIN_ROWS:
         raise UsageError(
