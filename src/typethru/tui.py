@@ -155,6 +155,9 @@ class Controller:
                     typed_end = line_state.cursor
                     out.append(("", line_state.target[: typed_end]))
                     col = prefix_cols + typed_end
+                    if line_state.pending:
+                        out.append(("", line_state.pending))
+                        col += len(line_state.pending)
                     if line_state.error is not None:
                         shown = line_state.error if line_state.error.isprintable() else "?"
                         out.append(("class:err", shown))

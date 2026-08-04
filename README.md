@@ -17,6 +17,7 @@ typethru is that workflow, made safe and ergonomic:
 - **Byte-exact**: a finished session reproduces the agent's output exactly — CRLF, trailing whitespace, missing final newlines and all. Reconstruction splices the captured bytes; your typing is the gate, never the source of truth.
 - **Crash-safe**: the agent's version is backed up under `.git/typethru/` before anything is reverted. `typethru restore` brings it back at any point, including after a crash.
 - **No busywork**: lockfiles, generated paths, binary files, whitespace-only hunks and pure deletions apply automatically. Leading indentation and trailing whitespace are pre-filled. Pasting is ignored.
+- **AI punctuation is typeable**: model output is full of characters keyboards don't have. Compose them from keys you do have: `--` produces an em or en dash (`—` `–`), `...` produces an ellipsis (`…`), straight quotes produce curly ones (`'` -> `’`, `"` -> `“`), space produces a non-breaking space. Typing the real character directly also works, if you know the incantation for your OS.
 - **Not a game**: no ranks, streaks or live WPM. Accuracy and speed appear once, in the final summary.
 
 Honesty note: whether retyping builds comprehension is debated. typethru takes no position — it serves people who have already chosen the practice. If reading diffs works for you, use a review tool like [hunk](https://github.com/modem-dev/hunk) instead.

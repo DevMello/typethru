@@ -111,6 +111,72 @@ class TestTyping:
         assert s.finished
 
 
+class TestCompose:
+    def test_em_dash_typed_as_two_hyphens(self):
+        s, _ = session_for(b"a\n", "a\nx — y\n".encode())
+        for ch in "x ":
+            s.type_char(ch)
+        s.type_char("-")
+        line = s.current_line
+        assert line.pending == "-"
+        assert not line.complete
+        s.type_char("-")
+        assert line.pending == ""
+        assert line.target[line.cursor - 1] == "—"
+        for ch in " y":
+            s.type_char(ch)
+        s.enter()
+        assert s.finished
+
+    def test_direct_em_dash_still_accepted(self):
+        s, _ = session_for(b"a\n", "a\n—\n".encode())
+        s.type_char("—")
+        s.enter()
+        assert s.finished
+
+    def test_wrong_key_mid_compose_is_error(self):
+        s, _ = session_for(b"a\n", "a\n—x\n".encode())
+        s.type_char("-")
+        s.type_char("z")
+        line = s.current_line
+        assert line.error == "z"
+        assert line.pending == "-"
+        s.backspace()          # clears the error, keeps the partial
+        assert line.error is None and line.pending == "-"
+        s.type_char("-")
+        s.type_char("x")
+        s.enter()
+        assert s.finished
+
+    def test_backspace_unwinds_pending(self):
+        s, _ = session_for(b"a\n", "a\n…\n".encode())  # ellipsis = ...
+        s.type_char(".")
+        s.type_char(".")
+        assert s.current_line.pending == ".."
+        s.backspace()
+        assert s.current_line.pending == "."
+        s.type_char(".")
+        s.type_char(".")
+        s.enter()
+        assert s.finished
+
+    def test_curly_quotes_and_nbsp(self):
+        target = "a\n‘q’ “w” z\n".encode()
+        s, _ = session_for(b"a\n", target)
+        for key in ["'", "q", "'", " ", '"', "w", '"', " ", "z"]:
+            s.type_char(key)
+        s.enter()
+        assert s.finished
+        assert s.stats.errors == 0
+
+    def test_compose_keystrokes_count_toward_stats(self):
+        s, _ = session_for(b"a\n", "a\n—\n".encode())
+        s.type_char("-")
+        s.type_char("-")
+        s.enter()
+        assert s.stats.correct == 2  # two keystrokes for one character
+
+
 class TestOutcomes:
     def test_apply_without_typing(self):
         writes = []

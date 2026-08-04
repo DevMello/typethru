@@ -21,6 +21,20 @@ AUTO = "auto"
 APPLIED = "applied"   # applied without typing (Ctrl-A)
 SKIPPED = "skipped"
 
+# Characters AI output is full of and keyboards are not. Each maps to the key
+# sequence that produces it; a prefix of the sequence is held as a pending
+# partial until it completes or a wrong key lands as an error.
+COMPOSE = {
+    "—": "--",    # em dash
+    "–": "--",    # en dash
+    "…": "...",   # ellipsis
+    "‘": "'",     # left single curly quote
+    "’": "'",     # right single curly quote (the apostrophe AI loves)
+    "“": '"',     # left double curly quote
+    "”": '"',     # right double curly quote
+    " ": " ",     # non-breaking space
+}
+
 
 @dataclass
 class SessionItem:
@@ -37,6 +51,7 @@ class LineState:
     end: int               # one past the last index the user must type
     typed: int = 0         # correctly typed chars, absolute index = start + typed
     error: str | None = None  # pending wrong character, shown at the cursor cell
+    pending: str = ""      # partial compose sequence for the expected character
 
     @property
     def cursor(self) -> int:
@@ -44,7 +59,7 @@ class LineState:
 
     @property
     def complete(self) -> bool:
-        return self.cursor >= self.end and self.error is None
+        return self.cursor >= self.end and self.error is None and not self.pending
 
 
 @dataclass
@@ -170,15 +185,30 @@ class Session:
             line.error = char
             return
         expected = line.target[line.cursor]
-        if char == expected:
-            if line.error is not None:
-                line.error = None
+        if not line.pending and char == expected:
+            self._accept(line, advance=True)
+            return
+        seq = COMPOSE.get(expected)
+        if seq is not None:
+            candidate = line.pending + char
+            if candidate == seq:
+                line.pending = ""
+                self._accept(line, advance=True)
+                return
+            if seq.startswith(candidate):
+                line.pending = candidate
+                self._accept(line, advance=False)
+                return
+        self.stats.errors += 1
+        line.error = char
+
+    def _accept(self, line: LineState, advance: bool) -> None:
+        if line.error is not None:
+            line.error = None
+        if advance:
             line.typed += 1
-            self.stats.correct += 1
-            self.stats.typed_chars += 1
-        else:
-            self.stats.errors += 1
-            line.error = char
+        self.stats.correct += 1
+        self.stats.typed_chars += 1
 
     def backspace(self) -> None:
         line = self._line
@@ -186,6 +216,8 @@ class Session:
             return
         if line.error is not None:
             line.error = None
+        elif line.pending:
+            line.pending = line.pending[:-1]
         elif line.typed > 0:
             line.typed -= 1
 

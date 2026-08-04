@@ -100,6 +100,26 @@ class TestGateD1D5:
         assert "aborted - nothing changed" in capsys.readouterr().out
 
 
+class TestComposeEndToEnd:
+    def test_ai_punctuation_file_typed_through_pipe(self, repo):
+        """A doc full of em dashes, curly quotes and ellipses — typed with
+        only keys a keyboard has."""
+        (repo / "NOTES.md").write_bytes(b"# Notes\n")
+        commit_all(repo)
+        agent_text = (
+            "# Notes\n"
+            "It’s not a bug — it’s a feature… “obviously”.\n"
+            "Range 1–5 covered.\n"
+        ).encode()
+        (repo / "NOTES.md").write_bytes(agent_text)
+        files, _, _ = cli.gate_files(repo)
+        keys = ENTER + keystrokes_for(files, rules.Settings.load(repo))
+        assert "—" not in keys and "’" not in keys and "…" not in keys
+        rc = run_gate(repo, keys)
+        assert rc == 0
+        assert (repo / "NOTES.md").read_bytes() == agent_text
+
+
 class TestSkipApplyResumeD3D4:
     @pytest.fixture
     def two_hunk_repo(self, repo):

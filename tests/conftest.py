@@ -45,6 +45,7 @@ def keystrokes_for(files, settings: rules.Settings | None = None) -> str:
             if text.strip():
                 start = len(text) - len(text.lstrip()) if settings.auto_indent else 0
                 end = len(text.rstrip())
-                keys.append(text[start:end])
+                for ch in text[start:end]:
+                    keys.append(engine.COMPOSE.get(ch, ch))
             keys.append("\r")
     return "".join(keys)
