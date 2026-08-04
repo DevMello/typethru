@@ -124,6 +124,7 @@ def cmd_gate(root: Path, input=None, output=None) -> int:
         plan=_plan_entries(session),
         untracked=left_alone,
         on_begin=on_begin,
+        on_dismiss_hints=_dismiss_hints,
     )
     return _run_session(root, session, files, config, input=input, output=output)
 
@@ -153,6 +154,7 @@ def _resume(root: Path, input=None, output=None) -> int:
         plan=_plan_entries(session),
         untracked=[],
         on_begin=session.start,
+        on_dismiss_hints=_dismiss_hints,
     )
     return _run_session(root, session, files, config, input=input, output=output)
 
@@ -184,6 +186,11 @@ def _verify(root: Path, files) -> bool:
         if current != fd.target:
             return False
     return True
+
+
+def _dismiss_hints() -> None:
+    """Persist "never show again" for the compose hint (user-level config)."""
+    gitio.config_set_global("typethru.hints", "false")
 
 
 def _writer(root: Path, modes: dict[str, int | None]):
@@ -249,6 +256,7 @@ def cmd_practice(root: Path, spec: str, input=None, output=None) -> int:
         untracked=[],
         on_begin=session.start,
         subtitle=spec,
+        on_dismiss_hints=_dismiss_hints,
     )
     if input is None:
         _check_terminal()

@@ -16,7 +16,7 @@ from prompt_toolkit.filters import Condition
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.layout import HSplit, Layout, Window
-from prompt_toolkit.layout.containers import ScrollOffsets
+from prompt_toolkit.layout.containers import ConditionalContainer, ScrollOffsets
 from prompt_toolkit.layout.controls import FormattedTextControl
 from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.screen import Point
@@ -71,6 +71,7 @@ class TuiConfig:
     untracked: list[str]
     on_begin: Callable[[], None] | None = None  # gate: backup + revert happen here
     subtitle: str = ""
+    on_dismiss_hints: Callable[[], None] | None = None  # persist "never show again"
 
 
 class Controller:
@@ -196,6 +197,31 @@ class Controller:
     def cursor_position(self):
         return self._cursor
 
+    def hint_visible(self) -> bool:
+        """The compose hint shows whenever the current hunk contains a
+        character that needs a compose sequence, until dismissed for good."""
+        if self.state != "typing" or not self.session.settings.hints:
+            return False
+        item = self.session.current
+        if item is None:
+            return False
+        return any(
+            ch in engine.COMPOSE for line in item.hunk.add_lines for ch in line.text
+        )
+
+    def dismiss_hints(self) -> None:
+        self.session.settings.hints = False
+        if self.config.on_dismiss_hints is not None:
+            self.config.on_dismiss_hints()
+
+    def hint_fragments(self):
+        return [
+            (
+                "class:dim",
+                'hint: type — as --, … as ..., curly quotes as \' and "   [^N] never show again',
+            )
+        ]
+
     def footer_fragments(self):
         counts = self.session.counts()
         parts = ["[^A] apply  [^S] skip  [^Q] quit"]
@@ -269,6 +295,10 @@ def build_app(controller: Controller, input=None, output=None):
         session.quit()
         event.app.exit(result="quit")
 
+    @kb.add("c-n", filter=in_typing)
+    def _dismiss_hints(event):
+        controller.dismiss_hints()
+
     @kb.add(Keys.BracketedPaste)
     def _paste(event):
         """Pasting is ignored: the point is typing."""
@@ -298,7 +328,11 @@ def build_app(controller: Controller, input=None, output=None):
         content=FormattedTextControl(lambda: controller.footer_fragments() if controller.state == "typing" else [("class:dim", "")]),
         height=Dimension.exact(1),
     )
-    root = HSplit([header, Window(height=Dimension.exact(1)), body, Window(height=Dimension.exact(1)), footer])
+    hint = ConditionalContainer(
+        Window(content=FormattedTextControl(controller.hint_fragments), height=Dimension.exact(1)),
+        filter=Condition(controller.hint_visible),
+    )
+    root = HSplit([header, Window(height=Dimension.exact(1)), body, Window(height=Dimension.exact(1)), hint, footer])
     return Application(
         layout=Layout(root, focused_element=body),
         key_bindings=kb,

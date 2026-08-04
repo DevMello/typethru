@@ -187,6 +187,11 @@ def config_get(root: Path, key: str) -> str | None:
     return values[-1] if values else None
 
 
+def config_set_global(key: str, value: str) -> None:
+    """Persist a user-level setting (honors GIT_CONFIG_GLOBAL)."""
+    _run(["config", "--global", key, value])
+
+
 def write_file(root: Path, path: str, content: bytes | None, mode: int | None = None) -> None:
     """Write repo-relative `path` to `content`; None means delete the file."""
     abs_path = root / path

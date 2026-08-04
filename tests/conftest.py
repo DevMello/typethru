@@ -14,6 +14,15 @@ def git(repo: Path, *args: str, data: bytes | None = None) -> subprocess.Complet
     )
 
 
+@pytest.fixture(autouse=True)
+def isolated_global_config(tmp_path_factory, monkeypatch):
+    """Point git's --global scope at a throwaway file so hint dismissal
+    (and any other user-level write) never touches the real ~/.gitconfig."""
+    path = tmp_path_factory.mktemp("gitconfig") / "config"
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(path))
+    return path
+
+
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     path = tmp_path / "repo"

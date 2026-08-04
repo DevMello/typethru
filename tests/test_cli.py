@@ -120,6 +120,24 @@ class TestComposeEndToEnd:
         assert (repo / "NOTES.md").read_bytes() == agent_text
 
 
+CTRL_N = "\x0e"
+
+
+class TestHintDismissalEndToEnd:
+    def test_ctrl_n_persists_never_show_again(self, repo, isolated_global_config):
+        (repo / "NOTES.md").write_bytes(b"# Notes\n")
+        commit_all(repo)
+        (repo / "NOTES.md").write_bytes("# Notes\nfine — sure\n".encode())
+        files, _, _ = cli.gate_files(repo)
+        keys = ENTER + CTRL_N + keystrokes_for(files, rules.Settings.load(repo))
+        rc = run_gate(repo, keys)
+        assert rc == 0
+        # The dismissal landed in the (isolated) user-level git config...
+        assert "hints = false" in isolated_global_config.read_text()
+        # ...so a fresh Settings load has hints off.
+        assert rules.Settings.load(repo).hints is False
+
+
 class TestSkipApplyResumeD3D4:
     @pytest.fixture
     def two_hunk_repo(self, repo):
