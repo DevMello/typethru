@@ -34,6 +34,7 @@ class Settings:
     auto_globs: list[str]
     auto_indent: bool = True
     live_stats: bool = True
+    highlight: bool = True
 
     @classmethod
     def load(cls, root) -> "Settings":
@@ -44,6 +45,7 @@ class Settings:
             auto_globs=globs,
             auto_indent=(indent != "type"),
             live_stats=_config_bool(root, "typethru.livestats", default=True),
+            highlight=_config_bool(root, "typethru.highlight", default=True),
         )
 
 

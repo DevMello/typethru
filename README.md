@@ -19,6 +19,7 @@ typethru is that workflow, made safe and ergonomic:
 - **No busywork**: lockfiles, generated paths, binary files, whitespace-only hunks and pure deletions apply automatically. Leading indentation and trailing whitespace are pre-filled. Pasting is ignored.
 - **AI punctuation is typeable**: model output is full of characters keyboards don't have. Compose them from keys you do have: `--` produces an em or en dash (`—` `–`), `...` produces an ellipsis (`…`), straight quotes produce curly ones (`'` -> `’`, `"` -> `“`), space produces a non-breaking space. Typing the real character directly also works, if you know the incantation for your OS.
 - **Not a game**: no ranks, no streaks, no confetti. The footer shows live accuracy, WPM and elapsed time (turn it off with `git config typethru.livestats false` if you'd rather find out at the end).
+- **Earned color**: lines you've completed render with syntax highlighting (hundreds of languages via Pygments, detected from the filename); untyped ghost text stays gray. Color arrives as you finish each line. `git config typethru.highlight false` or `NO_COLOR` disables it.
 
 Honesty note: whether retyping builds comprehension is debated. typethru takes no position — it serves people who have already chosen the practice. If reading diffs works for you, use a review tool like [hunk](https://github.com/modem-dev/hunk) instead.
 
@@ -28,7 +29,7 @@ Honesty note: whether retyping builds comprehension is debated. typethru takes n
 pip install typethru
 ```
 
-Python 3.10+, any platform with a terminal (Windows, macOS, Linux). Requires `git` on PATH. One dependency (`prompt_toolkit`).
+Python 3.10+, any platform with a terminal (Windows, macOS, Linux). Requires `git` on PATH. Two dependencies (`prompt_toolkit`, `pygments`).
 
 ## Use
 
@@ -59,6 +60,8 @@ Via `git config`:
 ```bash
 git config typethru.indent type                 # also type leading indentation (default: auto-filled)
 git config --add typethru.autoapply "generated/*"  # extra auto-apply globs
+git config typethru.livestats false             # no live accuracy/wpm/elapsed in the footer
+git config typethru.highlight false             # no syntax highlighting on completed lines
 ```
 
 Defaults auto-apply: `*.lock`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `Cargo.lock`, `uv.lock`, `poetry.lock`, `go.sum`, `*.min.*`, `dist/*`, `build/*`, `node_modules/*`. `NO_COLOR` is respected.

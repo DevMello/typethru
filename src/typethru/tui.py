@@ -22,7 +22,7 @@ from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.screen import Point
 from prompt_toolkit.styles import Style
 
-from . import engine
+from . import engine, highlight
 from .summary import _fmt_elapsed
 
 GUTTER = 6
@@ -79,6 +79,22 @@ class Controller:
         self.config = config
         self.state = "plan"
         self._cursor: Point | None = None
+        self._hl_enabled = session.settings.highlight and not os.environ.get("NO_COLOR")
+        self._hl_cache: dict[str, list | None] = {}
+
+    def _highlighted(self, item: engine.SessionItem, dline) -> list[tuple[str, str]] | None:
+        """Syntax fragments for a completed line, or None to render plain."""
+        if not self._hl_enabled or dline.target_lineno is None:
+            return None
+        path = item.file.path
+        if path not in self._hl_cache:
+            target = item.file.target
+            try:
+                text = target.decode("utf-8") if target is not None else ""
+            except UnicodeDecodeError:
+                text = ""
+            self._hl_cache[path] = highlight.highlight_file(path, text) if text else None
+        return highlight.line_fragments(self._hl_cache[path], dline.target_lineno, dline.text)
 
     # -- plan screen -------------------------------------------------------
 
@@ -148,7 +164,12 @@ class Controller:
                 if idx < current_idx:
                     out.append(("class:dim", gutter))
                     out.append(("class:donemark", "  +  "))
-                    out.append(("class:done", f"{dline.text}\n"))
+                    frags = self._highlighted(item, dline)
+                    if frags is None:
+                        out.append(("class:done", f"{dline.text}\n"))
+                    else:
+                        out.extend(frags)
+                        out.append(("", "\n"))
                 elif idx == current_idx and line_state is not None:
                     out.append(("class:dim", gutter))
                     out.append(("class:dim", "  +  "))
