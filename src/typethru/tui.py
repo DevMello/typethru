@@ -150,7 +150,7 @@ class Controller:
                     out.append(("class:done", f"{dline.text}\n"))
                 elif idx == current_idx and line_state is not None:
                     out.append(("class:dim", gutter))
-                    out.append(("class:donemark", "  +  "))
+                    out.append(("class:dim", "  +  "))
                     prefix_cols = GUTTER + 5
                     typed_end = line_state.cursor
                     out.append(("", line_state.target[: typed_end]))
