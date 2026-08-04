@@ -1,4 +1,29 @@
-# VERIFICATION — typethru v0.1.0
+# VERIFICATION — typethru
+
+## v0.2.0 (2026-08-04)
+
+Same method as v0.1.0 below: fresh clone to a scratch directory after the final feature commit, clean venvs, README followed with the documented PyPI adaptation, real TUI driven through `create_pipe_input`, user-level git config isolated via `GIT_CONFIG_GLOBAL`.
+
+| Step | py3.12.4 | py3.10.8 (floor) |
+|---|---|---|
+| `pip install` from clean venv | exit 0 (editable) | exit 0 (wheel) |
+| `pytest` (102 tests) | 102 passed | 102 passed |
+| `typethru --version` | `typethru 0.2.0` | `typethru 0.2.0` |
+| Feature walk (below) | 5/5 | 5/5 |
+
+Observed feature walk (py3.10 shown; py3.12 identical):
+
+- **V1 — Compose sequences.** A markdown file containing `’ — … “ ” –` was typed end-to-end through the real app using an ASCII-only keystream (`--`, `...`, straight quotes); exit 0, result byte-identical, `accuracy 100.0%`.
+- **V2 — Live stats.** Mid-session footer observed: `[^A] apply  [^S] skip  [^Q] quit   100.0% 0wpm 0s   0 typed  0 auto  0 skipped`; with `livestats` off the footer reverts to keys + tally only.
+- **V3 — Earned color.** Pygments fragments for `count = 42` reproduce the text exactly with ANSI-palette styles (`fg:ansimagenta` on `42`); the defensive exact-text check is exercised by the suite.
+- **V4 — Compose hint.** `^N` during a session wrote `hints = false` to the (isolated) user-level git config; a fresh `Settings.load()` has hints off; session still completed exit 0.
+- **V5 — v0.1 regression spot-check.** Quit mid-session leaves the backup; `typethru restore` recovers the captured bytes exactly.
+
+The full v0.1.0 DoD walk items remain covered by the 102-test suite (byte-identity incl. CRLF, error blocking, skip/apply/resume, crash restore, auto-apply, read-only practice, all error paths). Scratch clone deleted after the gate.
+
+---
+
+# v0.1.0 record
 
 Date: 2026-08-04. Platform: Windows 11, git 2.45.2. Run unattended; every result below is an observed output from an executed command, not an expectation.
 
