@@ -52,6 +52,34 @@ class TestComposeHint:
         assert calls == [True]
 
 
+class TestEstimatedTime:
+    def test_plan_shows_per_file_and_total_estimate(self):
+        fd = compute_file_diff("f.py", b"a\n", b"a\n" + b"x" * 200 + b"\n")
+        settings = Settings(auto_globs=list(DEFAULT_AUTO_GLOBS))
+        session = engine.Session([fd], settings, writer=None)
+        entry = tui.PlanEntry(path="f.py", typeable=1, auto=0, est_chars=2000)
+        ctrl = tui.Controller(
+            session,
+            tui.TuiConfig(mode="gate", plan=[entry], untracked=[], est_wpm=40.0),
+        )
+        text = "".join(t for _, t in ctrl.plan_fragments())
+        assert "~10m" in text                       # 2000 chars / 5 / 40wpm
+        assert "estimated typing: ~10m at 40 wpm" in text
+
+    def test_no_estimate_without_wpm(self):
+        session = engine.Session([], Settings(auto_globs=[]), writer=None)
+        ctrl = tui.Controller(
+            session, tui.TuiConfig(mode="gate", plan=[], untracked=[], est_wpm=None)
+        )
+        text = "".join(t for _, t in ctrl.plan_fragments())
+        assert "estimated typing" not in text
+
+    def test_fmt_minutes(self):
+        assert tui._fmt_minutes(0.4) == "<1m"
+        assert tui._fmt_minutes(14.4) == "14m"
+        assert tui._fmt_minutes(65) == "1h05m"
+
+
 class TestLiveStats:
     def test_footer_shows_stats_when_enabled(self):
         ctrl = controller(live_stats=True)

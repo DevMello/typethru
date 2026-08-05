@@ -131,6 +131,7 @@ def cmd_gate(root: Path, input=None, output=None) -> int:
         untracked=left_alone,
         on_begin=on_begin,
         on_dismiss_hints=_dismiss_hints,
+        est_wpm=history.median_wpm(root),
     )
     return _run_session(root, session, files, config, input=input, output=output)
 
@@ -161,6 +162,7 @@ def _resume(root: Path, input=None, output=None) -> int:
         untracked=[],
         on_begin=session.start,
         on_dismiss_hints=_dismiss_hints,
+        est_wpm=history.median_wpm(root),
     )
     return _run_session(root, session, files, config, input=input, output=output)
 
@@ -216,6 +218,9 @@ def _plan_entries(session: engine.Session) -> list[tui.PlanEntry]:
         entry = by_path.setdefault(item.file.path, tui.PlanEntry(path=item.file.path, typeable=0, auto=0))
         if item.auto_reason is None:
             entry.typeable += 1
+            # Estimate: stripped length of every line to type. Ignores delta
+            # and repeat-fill savings, so real sessions come in under it.
+            entry.est_chars += sum(len(ln.text.strip()) for ln in item.hunk.add_lines)
         else:
             entry.auto += 1
             if item.auto_reason not in entry.auto_reasons:
@@ -264,6 +269,7 @@ def cmd_practice(root: Path, spec: str, input=None, output=None) -> int:
         on_begin=session.start,
         subtitle=spec,
         on_dismiss_hints=_dismiss_hints,
+        est_wpm=history.median_wpm(root),
     )
     if input is None:
         _check_terminal()

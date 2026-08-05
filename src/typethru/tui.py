@@ -62,6 +62,16 @@ class PlanEntry:
     typeable: int
     auto: int
     auto_reasons: list[str] = field(default_factory=list)
+    est_chars: int = 0
+
+
+def _fmt_minutes(minutes: float) -> str:
+    if minutes < 1:
+        return "<1m"
+    m = round(minutes)
+    if m >= 60:
+        return f"{m // 60}h{m % 60:02d}m"
+    return f"{m}m"
 
 
 @dataclass
@@ -72,6 +82,7 @@ class TuiConfig:
     on_begin: Callable[[], None] | None = None  # gate: backup + revert happen here
     subtitle: str = ""
     on_dismiss_hints: Callable[[], None] | None = None  # persist "never show again"
+    est_wpm: float | None = None  # historical median wpm driving the estimate
 
 
 class Controller:
@@ -105,17 +116,23 @@ class Controller:
         title = {"gate": "typethru", "resume": "typethru - resuming", "practice": f"typethru practice {cfg.subtitle} - read-only"}[cfg.mode]
         out.append(("class:path", title))
         out.append(("", "\n\n"))
+        wpm = cfg.est_wpm
         for entry in cfg.plan:
             out.append(("", f"  {entry.path}"))
             bits = []
             if entry.typeable:
                 bits.append(f"{entry.typeable} hunk{'s' if entry.typeable != 1 else ''}")
+                if wpm:
+                    bits.append(f"~{_fmt_minutes(entry.est_chars / 5 / wpm)}")
             for reason in entry.auto_reasons:
                 bits.append(f"auto: {reason}")
             out.append(("class:dim", "   " + " - ".join(bits) + "\n"))
         for path in cfg.untracked:
             out.append(("class:dim", f"  {path}   untracked, left alone\n"))
         out.append(("", "\n"))
+        if wpm:
+            total = sum(e.est_chars for e in cfg.plan) / 5 / wpm
+            out.append(("class:dim", f"estimated typing: ~{_fmt_minutes(total)} at {wpm:.0f} wpm\n\n"))
         if cfg.mode == "gate":
             out.append(("", "Your working tree will be reverted while you type; staged changes are unstaged.\n"))
             out.append(("class:dim", "Backup: .git/typethru/\n\n"))
