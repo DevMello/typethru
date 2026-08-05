@@ -86,6 +86,14 @@ Pattern: `typethru: <what> - <what to do>`. No stack traces on any user-reachabl
 - **Compose hints.** Characters without keys (em/en dash, ellipsis, curly quotes, NBSP) accept compose sequences; the pending partial renders in default ink at the cursor. The column shift when `--` collapses into `—` is accepted (same class as the error-cell shift). A dim one-line hint (`hint: type — as --, ...`) sits above the footer whenever the current hunk contains a composable character; `^N` dismisses it permanently (user-level git config). The hint is chrome, so it lives at the screen edge in dim ink and appears/disappears only on hunk transitions, never mid-line.
 - **Earned color (syntax highlighting).** Completed add lines render with ANSI-palette syntax highlighting; the active line and ghosts stay monochrome. Color arrives when a line is done — highlighting doubles as the completion state. `git config typethru.highlight false` or `NO_COLOR` disables.
 
+## v0.3 revisions
+
+- **Plan screen prices the session.** Each typeable file carries `~Xm` and the plan ends with `estimated typing: ~14m at 41 wpm`, dim. The estimate is chrome, so it lives in dim ink and never appears once typing starts.
+- **Delta and repeat pre-fill render as default ink.** The rule generalizes from indentation: anything pre-filled (unchanged prefix/suffix of a rewritten line, an already-typed repeat line) shows in default ink; ghost gray marks only what your fingers still owe. A repeat line carries a dim `(repeat - Enter)` note.
+- **`^E` widens context.** Five more lines above and below per press, current hunk only. The footer keybar gains `[^E] ctx`; with live stats on the tally compresses to `T3 A1 S0` (mirroring the `^A`/`^S` key letters) so everything still fits at 80 columns.
+- **Practice runs carry the commit in the header.** Multi-commit practice shows `typethru  abc1234 subject  file  hunk m/n`; the plan screen lists the commits, oldest first, each priced.
+- **Receipts end the summary, not a banner.** One line after the verified verdict: `receipt: Typed-thru: ...` - the tool's only outward-facing artifact, phrased in past tense like everything else it says about you.
+
 ## Refinement log
 
 - **critique:** first draft had a live WPM counter in the footer; removed - grades mid-session violate principle 2 (quieter). Box-drawing frame around the hunk removed - dashboard chrome anti-reference; whitespace separates.
