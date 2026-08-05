@@ -186,7 +186,11 @@ class Controller:
                         out.append(("class:err", shown))
                         col += 1
                     self._cursor = Point(x=col, y=row)
-                    out.append(("class:ghost", line_state.target[typed_end:] + "\n"))
+                    # Ghost only what must be typed; a pre-filled delta suffix
+                    # (and trailing whitespace) renders in default ink.
+                    required_end = max(line_state.end, typed_end)
+                    out.append(("class:ghost", line_state.target[typed_end:required_end]))
+                    out.append(("", line_state.target[required_end:] + "\n"))
                 else:
                     out.append(("class:dim", gutter))
                     out.append(("class:dim", "  +  "))

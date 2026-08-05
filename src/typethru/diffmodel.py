@@ -32,10 +32,20 @@ class DiffLine:
     kind: str            # "ctx" | "del" | "add"
     data: bytes          # raw line bytes including any newline
     target_lineno: int | None  # 1-based line number in the target file (ctx/add)
+    paired_data: bytes | None = None  # replaced base line this add corresponds to
 
     @property
     def text(self) -> str:
         return self.data.decode("utf-8").rstrip("\r\n")
+
+    @property
+    def paired_text(self) -> str | None:
+        if self.paired_data is None:
+            return None
+        try:
+            return self.paired_data.decode("utf-8").rstrip("\r\n")
+        except UnicodeDecodeError:
+            return None
 
 
 @dataclass
@@ -148,8 +158,12 @@ def compute_file_diff(path: str, base: bytes | None, target: bytes | None) -> Fi
             else:
                 for k in range(i1, i2):
                     display.append(DiffLine("del", base_lines[k], None))
-                for k in range(j1, j2):
-                    display.append(DiffLine("add", target_lines[k], k + 1))
+                for offset, k in enumerate(range(j1, j2)):
+                    # In a replace block, the k-th added line most plausibly
+                    # rewrites the k-th deleted one; the engine uses the pair
+                    # for delta typing when the two are similar enough.
+                    paired = base_lines[i1 + offset] if tag == "replace" and offset < (i2 - i1) else None
+                    display.append(DiffLine("add", target_lines[k], k + 1, paired_data=paired))
         ctx_after = min(CONTEXT, len(target_lines) - t_end)
         for k in range(t_end, t_end + ctx_after):
             display.append(DiffLine("ctx", target_lines[k], k + 1))

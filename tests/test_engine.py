@@ -177,6 +177,59 @@ class TestCompose:
         assert s.stats.correct == 2  # two keystrokes for one character
 
 
+class TestDeltaTyping:
+    def test_small_edit_types_only_the_change(self):
+        s, _ = session_for(
+            b"total = compute_sum(values)\n", b"total = compute_avg(values)\n"
+        )
+        line = s.current_line
+        assert (line.start, line.end) == (16, 19)
+        assert line.target[line.start : line.end] == "avg"
+        for ch in "avg":
+            s.type_char(ch)
+        s.enter()
+        assert s.finished
+
+    def test_typing_through_prefilled_suffix_is_harmless(self):
+        s, _ = session_for(
+            b"total = compute_sum(values)\n", b"total = compute_avg(values)\n"
+        )
+        for ch in "avg(values)":  # keeps typing past the required region
+            s.type_char(ch)
+        assert s.current_line.error is None
+        assert s.stats.errors == 0
+        s.enter()
+        assert s.finished
+
+    def test_dissimilar_replacement_types_full_line(self):
+        s, _ = session_for(b"import os\n", b"return calculate_totals(frame)\n")
+        line = s.current_line
+        assert (line.start, line.end) == (0, len("return calculate_totals(frame)"))
+
+    def test_pure_insertion_has_no_pair(self):
+        s, _ = session_for(b"a\n", b"a\nnew line here\n")
+        line = s.current_line
+        assert (line.start, line.end) == (0, len("new line here"))
+
+    def test_delta_disabled_by_config(self):
+        s, _ = session_for(
+            b"total = compute_sum(values)\n",
+            b"total = compute_avg(values)\n",
+            delta=False,
+        )
+        line = s.current_line
+        assert (line.start, line.end) == (0, len("total = compute_avg(values)"))
+
+    def test_indent_still_prefilled_alongside_delta(self):
+        s, _ = session_for(
+            b"    return self.parse(data)\n", b"    return self.render(data)\n"
+        )
+        line = s.current_line
+        # common prefix "    return self." (16), suffix "(data)" then diverge
+        assert line.start == 16
+        assert line.target[line.start : line.end] == "render"
+
+
 class TestOutcomes:
     def test_apply_without_typing(self):
         writes = []

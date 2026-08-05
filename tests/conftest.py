@@ -42,19 +42,29 @@ def commit_all(repo: Path, message: str = "commit") -> None:
 
 def keystrokes_for(files, settings: rules.Settings | None = None) -> str:
     """The exact key sequence that types every pending hunk of a session
-    built over `files`, mirroring the CLI's deterministic construction."""
+    built over `files`.
+
+    Drives a shadow Session one keystroke at a time and records what it
+    demanded, so the script stays correct for every typing feature (compose,
+    delta regions, repeat fill) without duplicating engine logic."""
     settings = settings or rules.Settings(auto_globs=list(rules.DEFAULT_AUTO_GLOBS))
     shadow = engine.Session(files, settings, writer=None)
+    shadow.start()
     keys: list[str] = []
-    for item in shadow.items:
-        if item.auto_reason is not None:
-            continue
-        for line in item.hunk.add_lines:
-            text = line.text
-            if text.strip():
-                start = len(text) - len(text.lstrip()) if settings.auto_indent else 0
-                end = len(text.rstrip())
-                for ch in text[start:end]:
-                    keys.append(engine.COMPOSE.get(ch, ch))
+    guard = 0
+    while not shadow.finished:
+        guard += 1
+        assert guard < 100_000, "keystroke generator did not converge"
+        line = shadow.current_line
+        assert line is not None
+        if line.complete:
+            shadow.enter()
             keys.append("\r")
+            continue
+        expected = line.target[line.cursor]
+        seq = engine.COMPOSE.get(expected, expected)
+        key = seq[len(line.pending)] if expected in engine.COMPOSE else expected
+        shadow.type_char(key)
+        keys.append(key)
+    assert shadow.stats.errors == 0, "generator produced a wrong key"
     return "".join(keys)

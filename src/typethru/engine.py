@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Callable
 
 from .diffmodel import DiffLine, FileDiff, Hunk
@@ -60,6 +61,27 @@ class LineState:
     @property
     def complete(self) -> bool:
         return self.cursor >= self.end and self.error is None and not self.pending
+
+
+DELTA_MIN_RATIO = 0.5
+
+
+def _delta_region(target: str, paired: str | None, start: int, end: int) -> tuple[int, int]:
+    """Shrink the typing region to the span that actually changed, when this
+    add line rewrites a sufficiently similar deleted line. The unchanged
+    prefix and suffix are pre-filled like indentation."""
+    if not paired or SequenceMatcher(None, paired, target, autojunk=False).ratio() < DELTA_MIN_RATIO:
+        return start, end
+    p = 0
+    limit = min(len(target), len(paired))
+    while p < limit and target[p] == paired[p]:
+        p += 1
+    q = 0
+    while q < limit - p and target[len(target) - 1 - q] == paired[len(paired) - 1 - q]:
+        q += 1
+    start = max(start, p)
+    end = min(end, len(target) - q)
+    return start, max(end, start)
 
 
 @dataclass
@@ -164,10 +186,13 @@ class Session:
         if self._line_idx >= len(adds):
             self._line = None
             return
-        target = adds[self._line_idx].text
+        dline = adds[self._line_idx]
+        target = dline.text
         if target.strip():
             start = (len(target) - len(target.lstrip())) if self.settings.auto_indent else 0
             end = len(target.rstrip())
+            if self.settings.delta:
+                start, end = _delta_region(target, dline.paired_text, start, end)
         else:
             # Blank or whitespace-only line: nothing to type, Enter advances.
             start = end = 0
@@ -179,8 +204,10 @@ class Session:
         line = self._line
         if line is None or self.finished:
             return
-        if line.cursor >= line.end:
-            # Line already complete except Enter; extra typing is an error.
+        if line.cursor >= len(line.target):
+            # Past the end of the line entirely; extra typing is an error.
+            # (Between `end` and here lies pre-filled text - a delta suffix or
+            # trailing whitespace - which may be typed through harmlessly.)
             self.stats.errors += 1
             line.error = char
             return

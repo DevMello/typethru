@@ -36,6 +36,7 @@ class Settings:
     live_stats: bool = True
     highlight: bool = True
     hints: bool = True
+    delta: bool = True
 
     @classmethod
     def load(cls, root) -> "Settings":
@@ -48,6 +49,7 @@ class Settings:
             live_stats=_config_bool(root, "typethru.livestats", default=True),
             highlight=_config_bool(root, "typethru.highlight", default=True),
             hints=_config_bool(root, "typethru.hints", default=True),
+            delta=_config_bool(root, "typethru.delta", default=True),
         )
 
 
