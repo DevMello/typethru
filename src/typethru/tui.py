@@ -22,7 +22,7 @@ from prompt_toolkit.layout.dimension import Dimension
 from prompt_toolkit.layout.screen import Point
 from prompt_toolkit.styles import Style
 
-from . import engine, highlight
+from . import diffmodel, engine, highlight
 from .summary import _fmt_elapsed
 
 GUTTER = 6
@@ -93,6 +93,18 @@ class Controller:
         self._cursor: Point | None = None
         self._hl_enabled = session.settings.highlight and not os.environ.get("NO_COLOR")
         self._hl_cache: dict[str, list | None] = {}
+        self._ctx_extra: dict[int, int] = {}
+
+    def expand_context(self) -> None:
+        """Widen the current hunk's context window by 5 lines each press."""
+        item = self.session.current
+        if item is None:
+            return
+        extra = self._ctx_extra.get(id(item), 0) + 5
+        self._ctx_extra[id(item)] = extra
+        item.hunk.display = diffmodel.expand_display(
+            item.file, item.hunk, diffmodel.CONTEXT + extra
+        )
 
     def _highlighted(self, item: engine.SessionItem, dline) -> list[tuple[str, str]] | None:
         """Syntax fragments for a completed line, or None to render plain."""
@@ -251,15 +263,21 @@ class Controller:
 
     def footer_fragments(self):
         counts = self.session.counts()
-        parts = ["[^A] apply  [^S] skip  [^Q] quit"]
+        parts = ["[^A] apply  [^S] skip  [^E] ctx  [^Q] quit"]
         if self.session.settings.live_stats:
             stats = self.session.stats
             acc = f"{stats.accuracy:.1f}%" if stats.accuracy is not None else "--%"
             wpm = f"{stats.wpm:.0f}wpm" if stats.wpm is not None else "0wpm"
             parts.append(f"{acc} {wpm} {_fmt_elapsed(stats.elapsed)}")
-        parts.append(
-            f"{counts[engine.TYPED]} typed  {counts[engine.AUTO]} auto  {counts[engine.SKIPPED]} skipped"
-        )
+            # Compact tally so the 80-col floor still fits everything;
+            # T/A/S mirror the [^A]/[^S] key letters.
+            parts.append(
+                f"T{counts[engine.TYPED]} A{counts[engine.AUTO]} S{counts[engine.SKIPPED]}"
+            )
+        else:
+            parts.append(
+                f"{counts[engine.TYPED]} typed  {counts[engine.AUTO]} auto  {counts[engine.SKIPPED]} skipped"
+            )
         return [("class:dim", "   ".join(parts))]
 
 
@@ -325,6 +343,10 @@ def build_app(controller: Controller, input=None, output=None):
     @kb.add("c-n", filter=in_typing)
     def _dismiss_hints(event):
         controller.dismiss_hints()
+
+    @kb.add("c-e", filter=in_typing)
+    def _expand(event):
+        controller.expand_context()
 
     @kb.add(Keys.BracketedPaste)
     def _paste(event):

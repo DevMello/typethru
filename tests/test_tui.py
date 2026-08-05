@@ -80,6 +80,40 @@ class TestEstimatedTime:
         assert tui._fmt_minutes(65) == "1h05m"
 
 
+class TestExpandContext:
+    def test_expand_widens_and_preserves_typing_state(self):
+        base = b"".join(b"line%d\n" % i for i in range(40))
+        target = base.replace(b"line20\n", b"CHANGED\n")
+        fd = compute_file_diff("f.py", base, target)
+        settings = Settings(auto_globs=list(DEFAULT_AUTO_GLOBS))
+        session = engine.Session([fd], settings, writer=None)
+        session.start()
+        session.type_char("C")
+        ctrl = tui.Controller(session, tui.TuiConfig(mode="gate", plan=[], untracked=[]))
+        ctrl.state = "typing"
+        before = len(session.current.hunk.display)
+        adds_before = [ln.text for ln in session.current.hunk.add_lines]
+        line_before = session.current_line.target
+        ctrl.expand_context()
+        after = len(session.current.hunk.display)
+        assert after == before + 10  # 5 more above, 5 more below
+        assert [ln.text for ln in session.current.hunk.add_lines] == adds_before
+        assert session.current_line.target == line_before
+        assert session.current_line.typed == 1  # in-progress typing untouched
+
+    def test_expand_clamps_at_file_bounds(self):
+        fd = compute_file_diff("f.py", b"a\nb\n", b"a\nB\nb\n")
+        settings = Settings(auto_globs=list(DEFAULT_AUTO_GLOBS))
+        session = engine.Session([fd], settings, writer=None)
+        session.start()
+        ctrl = tui.Controller(session, tui.TuiConfig(mode="gate", plan=[], untracked=[]))
+        ctrl.state = "typing"
+        for _ in range(5):
+            ctrl.expand_context()
+        texts = [ln.text for ln in session.current.hunk.display]
+        assert texts == ["a", "B", "b"]  # whole file, no phantom lines
+
+
 class TestLiveStats:
     def test_footer_shows_stats_when_enabled(self):
         ctrl = controller(live_stats=True)
@@ -87,7 +121,7 @@ class TestLiveStats:
         text = footer_text(ctrl)
         assert "wpm" in text
         assert "100.0%" in text
-        assert "typed" in text  # tally still present
+        assert "T0 A0 S0" in text  # compact tally still present
 
     def test_accuracy_updates_with_errors(self):
         ctrl = controller(live_stats=True)

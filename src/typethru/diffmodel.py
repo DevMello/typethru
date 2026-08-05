@@ -54,6 +54,7 @@ class Hunk:
     base_span: tuple[int, int]     # [start, end) line indices in base
     target_span: tuple[int, int]   # [start, end) line indices in target
     display: list[DiffLine] = field(default_factory=list)
+    ops: list[tuple[str, int, int, int, int]] = field(default_factory=list)
 
     @property
     def add_lines(self) -> list[DiffLine]:
@@ -147,30 +148,57 @@ def compute_file_diff(path: str, base: bytes | None, target: bytes | None) -> Fi
             group.pop()
         b_start, b_end = group[0][1], group[-1][2]
         t_start, t_end = group[0][3], group[-1][4]
-        display: list[DiffLine] = []
-        ctx_before = min(CONTEXT, t_start)
-        for k in range(t_start - ctx_before, t_start):
-            display.append(DiffLine("ctx", target_lines[k], k + 1))
-        for tag, i1, i2, j1, j2 in group:
-            if tag == "equal":
-                for k in range(j1, j2):
-                    display.append(DiffLine("ctx", target_lines[k], k + 1))
-            else:
-                for k in range(i1, i2):
-                    display.append(DiffLine("del", base_lines[k], None))
-                for offset, k in enumerate(range(j1, j2)):
-                    # In a replace block, the k-th added line most plausibly
-                    # rewrites the k-th deleted one; the engine uses the pair
-                    # for delta typing when the two are similar enough.
-                    paired = base_lines[i1 + offset] if tag == "replace" and offset < (i2 - i1) else None
-                    display.append(DiffLine("add", target_lines[k], k + 1, paired_data=paired))
-        ctx_after = min(CONTEXT, len(target_lines) - t_end)
-        for k in range(t_end, t_end + ctx_after):
-            display.append(DiffLine("ctx", target_lines[k], k + 1))
         fd.hunks.append(
-            Hunk(index=idx, base_span=(b_start, b_end), target_span=(t_start, t_end), display=display)
+            Hunk(
+                index=idx,
+                base_span=(b_start, b_end),
+                target_span=(t_start, t_end),
+                display=_build_display(base_lines, target_lines, group, CONTEXT),
+                ops=group,
+            )
         )
     return fd
+
+
+def _build_display(
+    base_lines: list[bytes],
+    target_lines: list[bytes],
+    group: list[tuple[str, int, int, int, int]],
+    context: int,
+) -> list[DiffLine]:
+    t_start, t_end = group[0][3], group[-1][4]
+    display: list[DiffLine] = []
+    ctx_before = min(context, t_start)
+    for k in range(t_start - ctx_before, t_start):
+        display.append(DiffLine("ctx", target_lines[k], k + 1))
+    for tag, i1, i2, j1, j2 in group:
+        if tag == "equal":
+            for k in range(j1, j2):
+                display.append(DiffLine("ctx", target_lines[k], k + 1))
+        else:
+            for k in range(i1, i2):
+                display.append(DiffLine("del", base_lines[k], None))
+            for offset, k in enumerate(range(j1, j2)):
+                # In a replace block, the k-th added line most plausibly
+                # rewrites the k-th deleted one; the engine uses the pair
+                # for delta typing when the two are similar enough.
+                paired = base_lines[i1 + offset] if tag == "replace" and offset < (i2 - i1) else None
+                display.append(DiffLine("add", target_lines[k], k + 1, paired_data=paired))
+    ctx_after = min(context, len(target_lines) - t_end)
+    for k in range(t_end, t_end + ctx_after):
+        display.append(DiffLine("ctx", target_lines[k], k + 1))
+    return display
+
+
+def expand_display(fd: FileDiff, hunk: Hunk, context: int) -> list[DiffLine]:
+    """The same hunk rendered with a wider context window. Add lines are
+    identical to the original display, so an in-progress typing session is
+    unaffected by swapping the display mid-hunk."""
+    if not hunk.ops:
+        return hunk.display
+    return _build_display(
+        split_lines(fd.base or b""), split_lines(fd.target or b""), hunk.ops, context
+    )
 
 
 def _deletion_hunk(base: bytes) -> Hunk:
