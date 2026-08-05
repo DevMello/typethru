@@ -53,6 +53,7 @@ class LineState:
     typed: int = 0         # correctly typed chars, absolute index = start + typed
     error: str | None = None  # pending wrong character, shown at the cursor cell
     pending: str = ""      # partial compose sequence for the expected character
+    repeat_fill: bool = False  # identical line already typed this session
 
     @property
     def cursor(self) -> int:
@@ -134,6 +135,8 @@ class Session:
         self._pos = 0
         self._line_idx = 0
         self._line: LineState | None = None
+        self._typed_texts: set[str] = set()
+        self.repeat_lines = 0
 
     # -- session lifecycle -------------------------------------------------
 
@@ -188,15 +191,22 @@ class Session:
             return
         dline = adds[self._line_idx]
         target = dline.text
+        repeat = False
         if target.strip():
             start = (len(target) - len(target.lstrip())) if self.settings.auto_indent else 0
             end = len(target.rstrip())
             if self.settings.delta:
                 start, end = _delta_region(target, dline.paired_text, start, end)
+            if self.settings.repeatfill and target.strip() in self._typed_texts:
+                # Typed verbatim earlier this session: repetition, not
+                # comprehension. Nothing is required - Enter accepts the line,
+                # typing it anyway is accepted harmlessly.
+                start = end = 0
+                repeat = True
         else:
             # Blank or whitespace-only line: nothing to type, Enter advances.
             start = end = 0
-        self._line = LineState(target=target, start=start, end=end)
+        self._line = LineState(target=target, start=start, end=end, repeat_fill=repeat)
 
     # -- keystrokes --------------------------------------------------------
 
@@ -254,6 +264,10 @@ class Session:
             return
         if not line.complete:
             return
+        if line.repeat_fill:
+            self.repeat_lines += 1
+        elif line.end > line.start:
+            self._typed_texts.add(line.target.strip())
         self._line_idx += 1
         adds = self.add_lines()
         if self._line_idx >= len(adds):

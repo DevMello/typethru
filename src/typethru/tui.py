@@ -174,6 +174,12 @@ class Controller:
                 elif idx == current_idx and line_state is not None:
                     out.append(("class:dim", gutter))
                     out.append(("class:dim", "  +  "))
+                    if line_state.repeat_fill:
+                        self._cursor = Point(x=GUTTER + 5 + line_state.cursor, y=row)
+                        out.append(("", line_state.target))
+                        out.append(("class:dim", "  (repeat - Enter)\n"))
+                        row += 1
+                        continue
                     prefix_cols = GUTTER + 5
                     typed_end = line_state.cursor
                     out.append(("", line_state.target[: typed_end]))

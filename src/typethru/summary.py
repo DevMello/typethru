@@ -18,6 +18,8 @@ def render(session: engine.Session, mode: str, verified: bool | None) -> str:
 
     typed = counts[engine.TYPED]
     lines.append(f"  typed            {typed} hunk{'s' if typed != 1 else ''} ({session.typed_line_total()} lines)")
+    if session.repeat_lines:
+        lines.append(f"  repeated lines   {session.repeat_lines} auto-filled")
 
     auto = counts[engine.AUTO]
     if auto:
@@ -63,6 +65,7 @@ def session_entry(session: engine.Session, verified: bool | None, mode: str = "s
             "skipped": counts[engine.SKIPPED] + counts[engine.PENDING],
         },
         "lines_typed": session.typed_line_total(),
+        "repeat_lines": session.repeat_lines,
         "accuracy": stats.accuracy,
         "wpm": stats.wpm,
         "elapsed": round(stats.elapsed, 1),

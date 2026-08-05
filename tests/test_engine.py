@@ -230,6 +230,65 @@ class TestDeltaTyping:
         assert line.target[line.start : line.end] == "render"
 
 
+class TestRepeatFill:
+    def test_identical_line_autofills_second_time(self):
+        base = b"".join(b"line%d\n" % i for i in range(30))
+        target = base.replace(b"line2\n", b"line2\nimport logging\n").replace(
+            b"line25\n", b"line25\nimport logging\n"
+        )
+        s, fd = session_for(base, target)
+        type_line(s)                       # first occurrence: typed for real
+        line = s.current_line
+        assert line.repeat_fill
+        assert line.complete               # Enter is enough
+        s.enter()
+        assert s.finished
+        assert s.repeat_lines == 1
+        assert fd.reconstruct(s.applied[fd.path]) == target
+
+    def test_typing_a_repeat_line_anyway_is_harmless(self):
+        base = b"a\n"
+        target = b"a\nimport logging\n\nimport logging\n"
+        s, _ = session_for(base, target)
+        type_line(s)                       # first occurrence
+        s.enter()                          # blank line
+        line = s.current_line
+        assert line.repeat_fill
+        for ch in "import log":
+            s.type_char(ch)
+        assert s.stats.errors == 0
+        s.enter()
+        assert s.finished
+
+    def test_different_indent_same_content_still_fills(self):
+        base = b"a\n"
+        target = b"a\nfoo()\n\n    foo()\n"
+        s, _ = session_for(base, target)
+        type_line(s)
+        s.enter()
+        assert s.current_line.repeat_fill  # stripped text matches
+
+    def test_disabled_by_config(self):
+        base = b"a\n"
+        target = b"a\nimport logging\n\nimport logging\n"
+        s, _ = session_for(base, target, repeatfill=False)
+        type_line(s)
+        s.enter()
+        assert not s.current_line.repeat_fill
+
+    def test_repeat_lines_not_reseeded(self):
+        # A repeat-filled line must not count as "typed" for later lines.
+        s, _ = session_for(b"a\n", b"a\nx = 1\n\nx = 1\n\nx = 1\n")
+        type_line(s)
+        s.enter()
+        s.enter()   # second occurrence: repeat
+        s.enter()   # blank
+        assert s.current_line.repeat_fill  # third also repeats
+        s.enter()
+        assert s.finished
+        assert s.repeat_lines == 2
+
+
 class TestOutcomes:
     def test_apply_without_typing(self):
         writes = []
