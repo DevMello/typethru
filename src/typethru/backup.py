@@ -30,19 +30,33 @@ class BackupFile:
     mode: int | None
 
 
-def backup_dir(root: Path) -> Path:
+def state_dir(root: Path) -> Path:
+    """typethru's home inside .git; the backup lives in its own subdirectory
+    so dropping it can never touch the session history."""
     return gitio.git_dir(root) / "typethru"
 
 
+def backup_dir(root: Path) -> Path:
+    return state_dir(root) / "backup"
+
+
+def _manifest_dir(root: Path) -> Path | None:
+    if (backup_dir(root) / MANIFEST).exists():
+        return backup_dir(root)
+    if (state_dir(root) / MANIFEST).exists():  # pre-0.3 layout
+        return state_dir(root)
+    return None
+
+
 def exists(root: Path) -> bool:
-    return (backup_dir(root) / MANIFEST).exists()
+    return _manifest_dir(root) is not None
 
 
 def create(root: Path, captures: list[tuple[str, bytes | None, int | None]]) -> None:
     """captures: (repo-relative path, target content or None for deleted, mode)."""
-    bdir = backup_dir(root)
-    if (bdir / MANIFEST).exists():
+    if exists(root):
         raise BackupError("a backup already exists")
+    bdir = backup_dir(root)
     bdir.mkdir(parents=True, exist_ok=True)
     files: list[dict] = []
     for i, (path, content, mode) in enumerate(captures):
@@ -60,9 +74,10 @@ def create(root: Path, captures: list[tuple[str, bytes | None, int | None]]) -> 
 
 
 def load(root: Path) -> list[BackupFile]:
-    mpath = backup_dir(root) / MANIFEST
-    if not mpath.exists():
+    mdir = _manifest_dir(root)
+    if mdir is None:
         raise BackupError("no session backup found")
+    mpath = mdir / MANIFEST
     try:
         manifest = json.loads(mpath.read_text(encoding="utf-8"))
         return [
@@ -76,7 +91,10 @@ def load(root: Path) -> list[BackupFile]:
 def target_content(root: Path, bf: BackupFile) -> bytes | None:
     if bf.content_name is None:
         return None
-    blob = backup_dir(root) / bf.content_name
+    mdir = _manifest_dir(root)
+    if mdir is None:
+        raise BackupError("no session backup found")
+    blob = mdir / bf.content_name
     if not blob.exists():
         raise BackupError(f"backup blob missing for {bf.path}")
     return blob.read_bytes()
@@ -93,12 +111,16 @@ def restore(root: Path) -> list[str]:
 
 
 def drop(root: Path) -> None:
-    bdir = backup_dir(root)
-    if not bdir.exists():
+    mdir = _manifest_dir(root)
+    if mdir is None:
         return
-    for child in bdir.iterdir():
-        child.unlink()
-    bdir.rmdir()
+    # Remove only what a backup consists of; the state dir also holds the
+    # session history, which a drop must never touch.
+    (mdir / MANIFEST).unlink()
+    for blob in mdir.glob("*.bin"):
+        blob.unlink()
+    if mdir == backup_dir(root) and not any(mdir.iterdir()):
+        mdir.rmdir()
 
 
 def _write_synced(path: Path, data: bytes) -> None:

@@ -276,6 +276,13 @@ class Session:
             len(item.hunk.add_lines) for item in self.items if item.outcome == TYPED
         )
 
+    def typed_by_file(self) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for item in self.items:
+            if item.outcome == TYPED:
+                out[item.file.path] = out.get(item.file.path, 0) + len(item.hunk.add_lines)
+        return out
+
     def unresolved(self) -> int:
         c = self.counts()
         return c[SKIPPED] + c[PENDING]

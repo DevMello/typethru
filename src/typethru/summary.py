@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from . import engine
+from . import engine, history
 
 
 def _fmt_elapsed(seconds: float) -> str:
@@ -39,6 +39,7 @@ def render(session: engine.Session, mode: str, verified: bool | None) -> str:
 
     if verified is True:
         lines.append("working tree matches the captured state (verified)")
+        lines.append(f'receipt: {history.format_receipt(session_entry(session, verified))} ("typethru receipt" reprints)')
     elif verified is False:
         lines.append("warning: working tree does NOT match the captured state - backup kept, run \"typethru restore\"")
     unresolved = session.unresolved()
@@ -47,3 +48,25 @@ def render(session: engine.Session, mode: str, verified: bool | None) -> str:
             f'{unresolved} hunk{"s" if unresolved != 1 else ""} not applied - run "typethru" to continue or "typethru restore" to jump to the captured state'
         )
     return "\n".join(lines)
+
+
+def session_entry(session: engine.Session, verified: bool | None, mode: str = "session") -> dict:
+    """The history-record shape for a finished session."""
+    counts = session.counts()
+    stats = session.stats
+    return {
+        "mode": mode,
+        "hunks": {
+            "typed": counts[engine.TYPED],
+            "auto": counts[engine.AUTO],
+            "applied": counts[engine.APPLIED],
+            "skipped": counts[engine.SKIPPED] + counts[engine.PENDING],
+        },
+        "lines_typed": session.typed_line_total(),
+        "accuracy": stats.accuracy,
+        "wpm": stats.wpm,
+        "elapsed": round(stats.elapsed, 1),
+        "files": session.typed_by_file(),
+        "complete": session.unresolved() == 0,
+        "verified": verified,
+    }

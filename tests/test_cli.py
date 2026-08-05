@@ -299,6 +299,58 @@ class TestErrorsD7:
         assert "only binary or auto-apply" in capsys.readouterr().err
 
 
+class TestStatsAndReceipts:
+    def test_session_records_history_and_receipt(self, agent_repo, capsys):
+        files, _, _ = cli.gate_files(agent_repo)
+        keys = ENTER + keystrokes_for(files, rules.Settings.load(agent_repo))
+        rc = run_gate(agent_repo, keys)
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "receipt: Typed-thru: 3/6 hunks (3 auto)" in out
+
+        from typethru import history
+        entries = history.load(agent_repo)
+        assert len(entries) == 1
+        assert entries[0]["complete"] is True and entries[0]["verified"] is True
+
+        rc = cli.cmd_receipt(agent_repo)
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert out.startswith("Typed-thru: 3/6 hunks (3 auto), accuracy 100.0%")
+
+    def test_stats_aggregates(self, agent_repo, capsys):
+        files, _, _ = cli.gate_files(agent_repo)
+        run_gate(agent_repo, ENTER + keystrokes_for(files, rules.Settings.load(agent_repo)))
+        capsys.readouterr()
+        rc = cli.cmd_stats(agent_repo)
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "1 session in this repository" in out
+        assert "lines typed      3" in out
+        assert "most retyped" in out
+
+    def test_stats_empty(self, repo, capsys):
+        (repo / "a.py").write_bytes(b"x\n")
+        commit_all(repo)
+        rc = cli.cmd_stats(repo)
+        assert rc == 0
+        assert "no sessions recorded yet" in capsys.readouterr().out
+
+    def test_receipt_without_session(self, repo, monkeypatch, capsys):
+        (repo / "a.py").write_bytes(b"x\n")
+        commit_all(repo)
+        monkeypatch.chdir(repo)
+        rc = cli.main(["receipt"])
+        assert rc == 2
+        assert "no complete, verified session" in capsys.readouterr().err
+
+    def test_incomplete_session_gives_no_receipt(self, agent_repo, capsys):
+        run_gate(agent_repo, ENTER + CTRL_Q)
+        capsys.readouterr()
+        from typethru import history
+        assert history.last_receipt(agent_repo) is None
+
+
 class TestUnstagingAndIndex:
     def test_staged_changes_are_unstaged_for_session(self, repo):
         (repo / "a.py").write_bytes(b"x = 1\n")

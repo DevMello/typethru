@@ -15,7 +15,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import __version__, backup, diffmodel, engine, gitio, rules, summary, tui
+from . import __version__, backup, diffmodel, engine, gitio, history, rules, summary, tui
 
 MIN_COLS, MIN_ROWS = 80, 24
 
@@ -35,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     practice_p.add_argument("rev", help="commit, or range like A..B")
     restore_p = sub.add_parser("restore", help="recover the captured post-state from the last session")
     restore_p.add_argument("--drop", action="store_true", help="discard the backup, keep the tree as-is")
+    sub.add_parser("stats", help="aggregate session history for this repository")
+    sub.add_parser("receipt", help="print the trailer for the last complete, verified session")
     args = parser.parse_args(argv)
 
     try:
@@ -43,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_restore(root, drop=args.drop)
         if args.command == "practice":
             return cmd_practice(root, args.rev)
+        if args.command == "stats":
+            return cmd_stats(root)
+        if args.command == "receipt":
+            return cmd_receipt(root)
         return cmd_gate(root)
     except (UsageError, gitio.GitError, backup.BackupError) as exc:
         print(f"typethru: {exc}", file=sys.stderr)
@@ -173,6 +179,7 @@ def _run_session(root, session, files, config, input=None, output=None) -> int:
         verified = _verify(root, files)
         if verified:
             backup.drop(root)
+    history.record(root, summary.session_entry(session, verified))
     print(summary.render(session, "session", verified))
     if verified is False:
         return 1
@@ -265,8 +272,63 @@ def cmd_practice(root: Path, spec: str, input=None, output=None) -> int:
     if result == "abort":
         print("aborted")
         return 0
+    history.record(root, summary.session_entry(session, verified=None, mode="practice"))
     print(summary.render(session, "practice", verified=None))
     return 0 if session.unresolved() == 0 else 1
+
+
+# -- stats / receipt -------------------------------------------------------
+
+
+def cmd_stats(root: Path) -> int:
+    entries = history.load(root)
+    if not entries:
+        print("no sessions recorded yet - finish a typethru session first")
+        return 0
+    sessions = len(entries)
+    gate = [e for e in entries if e.get("mode") != "practice"]
+    practice = sessions - len(gate)
+    lines_typed = sum(e.get("lines_typed", 0) for e in entries)
+    repeats = sum(e.get("repeat_lines", 0) for e in entries)
+    elapsed = sum(e.get("elapsed", 0) for e in entries)
+    accuracies = [e["accuracy"] for e in entries if isinstance(e.get("accuracy"), (int, float))]
+    wpms = sorted(e["wpm"] for e in entries if isinstance(e.get("wpm"), (int, float)) and e["wpm"] > 0)
+    files: dict[str, int] = {}
+    for e in entries:
+        for path, count in (e.get("files") or {}).items():
+            files[path] = files.get(path, 0) + count
+
+    h, rem = divmod(int(elapsed), 3600)
+    m = rem // 60
+    time_str = f"{h}h{m:02d}m" if h else f"{m}m"
+    out = [f"typethru stats - {sessions} session{'s' if sessions != 1 else ''} in this repository"
+           + (f" ({practice} practice)" if practice else "")]
+    repeat_note = f" (plus {repeats} auto-filled repeats)" if repeats else ""
+    out.append(f"  lines typed      {lines_typed}{repeat_note}")
+    out.append(f"  time at the keys {time_str}")
+    if accuracies:
+        out.append(f"  accuracy         {sum(accuracies) / len(accuracies):.1f}% average")
+    if wpms:
+        mid = wpms[len(wpms) // 2]
+        out.append(f"  wpm              {mid:.0f} median ({wpms[0]:.0f}-{wpms[-1]:.0f})")
+    if files:
+        top = sorted(files.items(), key=lambda kv: -kv[1])[:3]
+        out.append("  most retyped     " + ", ".join(f"{p} ({n} lines)" for p, n in top))
+    last = entries[-1]
+    out.append(
+        f"last session {last.get('ts', '?')[:10]}: {last.get('hunks', {}).get('typed', 0)} hunks typed"
+        + (f", {last['accuracy']:.1f}%" if isinstance(last.get("accuracy"), (int, float)) else "")
+    )
+    print("\n".join(out))
+    return 0
+
+
+def cmd_receipt(root: Path) -> int:
+    receipt = history.last_receipt(root)
+    if receipt is None:
+        raise UsageError("no complete, verified session to certify - finish one first")
+    print(receipt)
+    return 0
 
 
 # -- shared ----------------------------------------------------------------
