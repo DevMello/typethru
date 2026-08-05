@@ -159,6 +159,21 @@ def rev_content(root: Path, rev: str, path: str) -> bytes | None:
     return proc.stdout
 
 
+def recent_commits(root: Path, n: int, paths: list[str] | None = None) -> list[tuple[str, str]]:
+    """(sha, subject) of the last n commits from HEAD, newest first,
+    optionally limited to commits touching the given paths."""
+    args = ["log", "-n", str(n), "--format=%H%x00%s"]
+    if paths:
+        args += ["--", *paths]
+    proc = _run(args, cwd=root)
+    out: list[tuple[str, str]] = []
+    for line in proc.stdout.decode("utf-8", "replace").splitlines():
+        if "\x00" in line:
+            sha, subject = line.split("\x00", 1)
+            out.append((sha, subject))
+    return out
+
+
 def diff_name_status(root: Path, base: str, target: str) -> list[tuple[str, str]]:
     """(status letter, path) pairs between two revisions, renames split."""
     proc = _run(

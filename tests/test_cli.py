@@ -227,6 +227,100 @@ class TestPracticeD6:
         assert run_practice(repo, "HEAD", keys) == 0
 
 
+class TestMultiCommitPractice:
+    @pytest.fixture
+    def history_repo(self, repo):
+        (repo / "src").mkdir()
+        (repo / "docs").mkdir()
+        (repo / "src" / "a.py").write_bytes(b"x = 1\n")
+        (repo / "docs" / "readme.md").write_bytes(b"# hi\n")
+        commit_all(repo, "seed")
+        (repo / "src" / "a.py").write_bytes(b"x = 1\ny = 2\n")
+        commit_all(repo, "add y")
+        (repo / "docs" / "readme.md").write_bytes(b"# hi\nmore words\n")
+        commit_all(repo, "expand docs")
+        (repo / "src" / "a.py").write_bytes(b"x = 1\ny = 2\nz = 3\n")
+        commit_all(repo, "add z")
+        return repo
+
+    def practice_keys(self, repo, n, paths=None):
+        """Keys for each commit-session, oldest first, mirroring the CLI."""
+        settings = rules.Settings.load(repo)
+        commits = list(reversed(gitio_recent(repo, n, paths)))
+        keys = ENTER  # plan screen
+        for sha, _subject in commits:
+            files = cli._rev_files(repo, cli._parent_rev(repo, sha), sha, paths or [])
+            if not files:
+                continue
+            keys += keystrokes_for(files, settings)
+        return keys
+
+    def test_practice_n_runs_all_commits_oldest_first(self, history_repo, capsys):
+        before = tree_state(history_repo)
+        keys = self.practice_keys(history_repo, 3)
+        with create_pipe_input() as pipe:
+            pipe.send_text(keys)
+            pipe.close()
+            rc = cli.cmd_practice(history_repo, None, n=3, input=pipe, output=DummyOutput())
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert tree_state(history_repo) == before
+        assert "typethru practice - 3 of 3 commits" in out
+        assert out.index("add y") < out.index("expand docs") < out.index("add z")
+        assert "total: 3 hunks (3 lines)" in out
+
+        from typethru import history
+        entries = history.load(history_repo)
+        assert len(entries) == 1
+        assert entries[0]["mode"] == "practice" and entries[0]["complete"] is True
+
+    def test_path_filter_limits_commits(self, history_repo, capsys):
+        keys = self.practice_keys(history_repo, 3, paths=["src"])
+        with create_pipe_input() as pipe:
+            pipe.send_text(keys)
+            pipe.close()
+            rc = cli.cmd_practice(
+                history_repo, None, n=3, paths=["src"], input=pipe, output=DummyOutput()
+            )
+        out = capsys.readouterr().out
+        assert rc == 0
+        # seed, add y, add z touch src; expand docs does not
+        assert "3 of 3 commits" in out
+        assert "seed" in out
+        assert "expand docs" not in out
+
+    def test_quit_midway_is_partial(self, history_repo, capsys):
+        settings = rules.Settings.load(history_repo)
+        commits = list(reversed(gitio_recent(history_repo, 3)))
+        sha, _ = commits[0]
+        first = cli._rev_files(history_repo, cli._parent_rev(history_repo, sha), sha, [])
+        keys = ENTER + keystrokes_for(first, settings) + CTRL_Q
+        with create_pipe_input() as pipe:
+            pipe.send_text(keys)
+            pipe.close()
+            rc = cli.cmd_practice(history_repo, None, n=3, input=pipe, output=DummyOutput())
+        out = capsys.readouterr().out
+        assert rc == 1
+        assert "2 of 3 commits" in out  # first typed, second quit mid-way
+
+    def test_rev_and_n_are_exclusive(self, history_repo, monkeypatch, capsys):
+        monkeypatch.chdir(history_repo)
+        rc = cli.main(["practice", "HEAD", "-n", "3"])
+        assert rc == 2
+        assert "not both" in capsys.readouterr().err
+
+    def test_neither_rev_nor_n(self, history_repo, monkeypatch, capsys):
+        monkeypatch.chdir(history_repo)
+        rc = cli.main(["practice"])
+        assert rc == 2
+        assert "give a revision" in capsys.readouterr().err
+
+
+def gitio_recent(repo, n, paths=None):
+    from typethru import gitio
+    return gitio.recent_commits(repo, n, paths or None)
+
+
 class TestErrorsD7:
     def test_not_a_repo(self, tmp_path, monkeypatch, capsys):
         monkeypatch.chdir(tmp_path)

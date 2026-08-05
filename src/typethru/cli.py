@@ -31,8 +31,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--version", action="version", version=f"typethru {__version__}")
     sub = parser.add_subparsers(dest="command")
-    practice_p = sub.add_parser("practice", help="type an existing commit's diff, read-only")
-    practice_p.add_argument("rev", help="commit, or range like A..B")
+    practice_p = sub.add_parser("practice", help="type existing commits' diffs, read-only")
+    practice_p.add_argument("rev", nargs="?", help="commit, or range like A..B")
+    practice_p.add_argument("-n", "--commits", type=int, metavar="N",
+                            help="practice the last N commits, oldest first")
+    practice_p.add_argument("--path", action="append", metavar="DIR",
+                            help="limit to commits/files under this path (repeatable)")
     restore_p = sub.add_parser("restore", help="recover the captured post-state from the last session")
     restore_p.add_argument("--drop", action="store_true", help="discard the backup, keep the tree as-is")
     sub.add_parser("stats", help="aggregate session history for this repository")
@@ -44,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "restore":
             return cmd_restore(root, drop=args.drop)
         if args.command == "practice":
-            return cmd_practice(root, args.rev)
+            return cmd_practice(root, args.rev, n=args.commits, paths=args.path)
         if args.command == "stats":
             return cmd_stats(root)
         if args.command == "receipt":
@@ -231,8 +235,41 @@ def _plan_entries(session: engine.Session) -> list[tui.PlanEntry]:
 # -- practice --------------------------------------------------------------
 
 
-def cmd_practice(root: Path, spec: str, input=None, output=None) -> int:
+def _rev_files(root: Path, base_rev: str, target_rev: str, paths: list[str]) -> list[diffmodel.FileDiff]:
+    files: list[diffmodel.FileDiff] = []
+    for _status, path in gitio.diff_name_status(root, base_rev, target_rev):
+        if paths and not any(path == p or path.startswith(p + "/") for p in paths):
+            continue
+        base = gitio.rev_content(root, base_rev, path)
+        target = gitio.rev_content(root, target_rev, path)
+        if base == target:
+            continue
+        files.append(diffmodel.compute_file_diff(path, base, target))
+    return [fd for fd in files if fd.hunks]
+
+
+def _parent_rev(root: Path, sha: str) -> str:
+    parent = gitio.rev_parse_commit(root, f"{sha}^")
+    return parent if parent is not None else gitio.empty_tree(root)
+
+
+def cmd_practice(
+    root: Path,
+    spec: str | None,
+    n: int | None = None,
+    paths: list[str] | None = None,
+    input=None,
+    output=None,
+) -> int:
     settings = rules.Settings.load(root)
+    paths = [p.replace("\\", "/").rstrip("/") for p in (paths or [])]
+    if spec and n:
+        raise UsageError("give either a revision or -n, not both")
+    if not spec and not n:
+        raise UsageError("give a revision (e.g. typethru practice HEAD) or -n <count> of recent commits")
+    if n:
+        return _practice_commits(root, settings, n, paths, input=input, output=output)
+
     if re.search(r"\.\.", spec):
         base_spec, target_spec = re.split(r"\.{2,3}", spec, maxsplit=1)
     else:
@@ -248,14 +285,7 @@ def cmd_practice(root: Path, spec: str, input=None, output=None) -> int:
         else:
             raise UsageError(f"cannot resolve revision '{base_spec}'")
 
-    files: list[diffmodel.FileDiff] = []
-    for status, path in gitio.diff_name_status(root, base_rev, target_rev):
-        base = gitio.rev_content(root, base_rev, path)
-        target = gitio.rev_content(root, target_rev, path)
-        if base == target:
-            continue
-        files.append(diffmodel.compute_file_diff(path, base, target))
-    files = [fd for fd in files if fd.hunks]
+    files = _rev_files(root, base_rev, target_rev, paths)
     if not files:
         raise UsageError(f"no changes in '{spec}' - nothing to type")
 
@@ -281,6 +311,75 @@ def cmd_practice(root: Path, spec: str, input=None, output=None) -> int:
     history.record(root, summary.session_entry(session, verified=None, mode="practice"))
     print(summary.render(session, "practice", verified=None))
     return 0 if session.unresolved() == 0 else 1
+
+
+def _practice_commits(root: Path, settings, n: int, paths: list[str], input=None, output=None) -> int:
+    """Practice the last n commits (optionally limited to paths), oldest
+    first, one typing session per commit, one aggregate summary."""
+    commits = gitio.recent_commits(root, n, paths or None)
+    if not commits:
+        where = f" touching {', '.join(paths)}" if paths else ""
+        raise UsageError(f"no commits found{where}")
+    commits.reverse()  # oldest first: read the history the way it was written
+
+    runs: list[tuple[str, engine.Session]] = []
+    skipped = 0
+    for sha, subject in commits:
+        files = _rev_files(root, _parent_rev(root, sha), sha, paths)
+        if not files:
+            skipped += 1
+            continue
+        session = engine.Session(files, settings, writer=None)
+        if not _has_typeable(session):
+            skipped += 1
+            continue
+        runs.append((f"{sha[:7]} {subject}", session))
+    if not runs:
+        raise UsageError("nothing typeable in those commits")
+
+    wpm = history.median_wpm(root)
+    plan = []
+    for label, session in runs:
+        entries = _plan_entries(session)
+        plan.append(
+            tui.PlanEntry(
+                path=label[:52],
+                typeable=sum(e.typeable for e in entries),
+                auto=sum(e.auto for e in entries),
+                est_chars=sum(e.est_chars for e in entries),
+            )
+        )
+    if input is None:
+        _check_terminal()
+
+    completed = 0
+    for i, (label, session) in enumerate(runs):
+        config = tui.TuiConfig(
+            mode="practice",
+            plan=plan if i == 0 else [],
+            untracked=[],
+            on_begin=session.start,
+            subtitle=label[:34],
+            on_dismiss_hints=_dismiss_hints,
+            est_wpm=wpm,
+        )
+        controller = tui.Controller(session, config)
+        if i > 0:
+            session.start()
+            controller.state = "typing"
+        result = tui.run(controller, input=input, output=output)
+        if result == "abort":
+            print("aborted")
+            return 0
+        completed += 1
+        if result == "quit":
+            break
+
+    done = [(label, session) for label, session in runs[:completed]]
+    history.record(root, summary.practice_run_entry([s for _, s in done]))
+    print(summary.render_practice_run(done, total=len(runs), skipped=skipped))
+    all_resolved = completed == len(runs) and all(s.unresolved() == 0 for _, s in done)
+    return 0 if all_resolved else 1
 
 
 # -- stats / receipt -------------------------------------------------------

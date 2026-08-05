@@ -52,6 +52,65 @@ def render(session: engine.Session, mode: str, verified: bool | None) -> str:
     return "\n".join(lines)
 
 
+def render_practice_run(done: list[tuple[str, engine.Session]], total: int, skipped: int) -> str:
+    """Aggregate summary for a multi-commit practice run."""
+    lines = [f"typethru practice - {len(done)} of {total} commit{'s' if total != 1 else ''}"]
+    for label, session in done:
+        counts = session.counts()
+        bits = [f"{counts[engine.TYPED]} hunk{'s' if counts[engine.TYPED] != 1 else ''} typed"]
+        if session.stats.accuracy is not None:
+            bits.append(f"{session.stats.accuracy:.1f}%")
+        if session.unresolved():
+            bits.append(f"{session.unresolved()} unresolved")
+        lines.append(f"  {label[:48]:<48} {' - '.join(bits)}")
+    if skipped:
+        lines.append(f"  ({skipped} commit{'s' if skipped != 1 else ''} had nothing typeable)")
+    sessions = [s for _, s in done]
+    typed = sum(s.counts()[engine.TYPED] for s in sessions)
+    line_total = sum(s.typed_line_total() for s in sessions)
+    correct = sum(s.stats.correct for s in sessions)
+    errors = sum(s.stats.errors for s in sessions)
+    chars = sum(s.stats.typed_chars for s in sessions)
+    elapsed = sum(s.stats.elapsed for s in sessions)
+    parts = [f"total: {typed} hunk{'s' if typed != 1 else ''} ({line_total} lines)"]
+    if correct + errors:
+        parts.append(f"accuracy {correct / (correct + errors) * 100:.1f}%")
+    if chars and elapsed > 0:
+        parts.append(f"{chars / 5 / (elapsed / 60):.0f} wpm")
+    parts.append(_fmt_elapsed(elapsed))
+    lines.append("  " + " - ".join(parts))
+    return "\n".join(lines)
+
+
+def practice_run_entry(sessions: list[engine.Session]) -> dict:
+    """One aggregate history record for a multi-commit practice run."""
+    correct = sum(s.stats.correct for s in sessions)
+    errors = sum(s.stats.errors for s in sessions)
+    chars = sum(s.stats.typed_chars for s in sessions)
+    elapsed = sum(s.stats.elapsed for s in sessions)
+    files: dict[str, int] = {}
+    for s in sessions:
+        for path, count in s.typed_by_file().items():
+            files[path] = files.get(path, 0) + count
+    return {
+        "mode": "practice",
+        "hunks": {
+            "typed": sum(s.counts()[engine.TYPED] for s in sessions),
+            "auto": sum(s.counts()[engine.AUTO] for s in sessions),
+            "applied": sum(s.counts()[engine.APPLIED] for s in sessions),
+            "skipped": sum(s.unresolved() for s in sessions),
+        },
+        "lines_typed": sum(s.typed_line_total() for s in sessions),
+        "repeat_lines": sum(s.repeat_lines for s in sessions),
+        "accuracy": (correct / (correct + errors) * 100) if correct + errors else None,
+        "wpm": (chars / 5 / (elapsed / 60)) if chars and elapsed > 0 else None,
+        "elapsed": round(elapsed, 1),
+        "files": files,
+        "complete": all(s.unresolved() == 0 for s in sessions),
+        "verified": None,
+    }
+
+
 def session_entry(session: engine.Session, verified: bool | None, mode: str = "session") -> dict:
     """The history-record shape for a finished session."""
     counts = session.counts()

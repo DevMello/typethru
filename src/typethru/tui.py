@@ -162,8 +162,10 @@ class Controller:
         pos = self.session.items.index(item) + 1
         adds = len(item.hunk.add_lines)
         line_no = min(self.session.current_line_index + 1, adds)
-        left = [
-            ("class:dim", "typethru  "),
+        left = [("class:dim", "typethru  ")]
+        if self.config.mode == "practice" and self.config.subtitle:
+            left.append(("class:dim", f"{self.config.subtitle}  "))
+        left += [
             ("class:path", item.file.path),
             ("class:dim", f"  hunk {pos}/{len(self.session.items)}"),
         ]
