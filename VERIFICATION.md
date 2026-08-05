@@ -1,5 +1,30 @@
 # VERIFICATION — typethru
 
+## v0.3.0 (2026-08-04)
+
+Same method as prior gates: fresh clone to a scratch directory, clean venvs, real TUI driven through `create_pipe_input`, user-level git config isolated via `GIT_CONFIG_GLOBAL`.
+
+| Step | py3.12.4 | py3.10.8 (floor) |
+|---|---|---|
+| `pip install` from clean venv | exit 0 (editable) | exit 0 (wheel) |
+| `pytest` (139 tests) | 139 passed | 139 passed |
+| `typethru --version` | `typethru 0.3.0` | `typethru 0.3.0` |
+| Feature walk (below) | 7/7 | 7/7 |
+
+Observed feature walk (py3.10 shown; py3.12 identical):
+
+- **W1 — Delta typing.** `compute_sum` -> `compute_avg` rename typed through the real app with exactly the keystream `avg` + Enter; result byte-identical.
+- **W2 — Repeat fill.** The same `import logging` line inserted at two spots: the keystream contains it once, summary reports `repeated lines   1 auto-filled`, file byte-identical.
+- **W3 — Stats and receipts.** `typethru stats` aggregated the session (`lines typed 2 (plus 1 auto-filled repeats)`, most-retyped file listed); `typethru receipt` printed `Typed-thru: 2/2 hunks, accuracy 100.0%, 1344 wpm` (robot-typist WPM, honestly recorded).
+- **W4 — Estimated time.** Plan screen observed: `estimated typing: ~20m at 40 wpm` with the per-file `~20m` annotation.
+- **W5 — Expandable context.** One `^E` press: display grew 8 -> 18 lines; in-progress typed count untouched.
+- **W6 — Multi-commit practice.** `practice -n 2`: sessions ran oldest-first (`add y` before `add z`), aggregate `total: 2 hunks (2 lines)`, worktree bytes unchanged.
+- **W7 — Layout compatibility.** A hand-built pre-0.3 backup layout restored correctly and cleared.
+
+The 139-test suite additionally covers: history round-trip with corrupt-line tolerance, backup-drop never touching history, receipt formatting honesty (auto/untyped counts), delta similarity gating and type-through-prefill acceptance, repeat-fill non-reseeding, estimate formatting, context clamping at file bounds, practice path filtering and mid-run quit, and the rev/-n argument contract. Scratch clone deleted after the gate.
+
+---
+
 ## v0.2.0 (2026-08-04)
 
 Same method as v0.1.0 below: fresh clone to a scratch directory after the final feature commit, clean venvs, README followed with the documented PyPI adaptation, real TUI driven through `create_pipe_input`, user-level git config isolated via `GIT_CONFIG_GLOBAL`.
